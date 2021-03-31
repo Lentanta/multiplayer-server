@@ -1,73 +1,68 @@
-const Websocket = require('ws');
 const express = require('express');
+const http = require('http');
 
-const Player = require('./classes/Player.js');
-
-const wss = new Websocket.Server({ port: 1337 });
 const app = express();
+const httpServer = http.Server(app);
+const io = require('socket.io')(httpServer)
 
-let players = [];
+let players = {};
+let commands = [];
 
-wss.on('connection', ws => {
-  console.log('New player have connect!')
+io.on('connection', (socket) => {
 
-  ws.on('message', (data) => {
-    const msg = JSON.parse(data);
-    switch (msg.type) {
-      case 'CONNECT': {
-        players.push({
-          id: msg.id,
-          x: Math.random() * 700,
-          y: 700,
-          ws
-        });
+  socket.emit('welcome', 'welcome');
+  socket.on('userConnect', ({ id, player }) => {
+    players[id] = {
+      socketId: socket.id,
+      x: (Math.random() * 700) + 1,
+      y: 700,
+    };
+  });
 
-        const message = JSON.stringify({
-          type: 'CREATE_NEW_PLAYER', players
-        })
-
-        players.forEach((player) => {
-          player.ws.send(message);
-        })
+  socket.on('disconnect', () => {
+    const list = Object.entries(players)
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] && list[i][1].socketId === socket.id) {
+        delete players[list[i][0]]
         break;
       }
-
-      case 'UPDATE_POSITION': {
-        const index = players.findIndex((player) => player.id === msg.id)
-        players[index].y -= 10; 
-        const message = JSON.stringify({
-          type: 'UPDATE_POSITION', players
-        })
-        players.forEach((player) => {
-          player.ws.send(message);
-        })
-      }
-
-      default: {
-        console.log("Default: ", msg);
-      }
     }
+  });
+
+  socket.on('playerMove', ({ id, move }) => {
+    commands.push({ id, move })
   })
 
-  ws.on('close', () => {
-    players.forEach((player, index) =>{
-      if(player.ws === ws){
-        players.splice(index, 1)
-      }
-    })
-  })
-})
+  setInterval(() => {
+    // socket.broadcast.emit('updatePosition', players)
+    commands.forEach((command, index) => {
+      movePlayer(command)
+      commands.splice(index, 1);
+    });
+  }, 15);
 
-// setInterval(() =>{
-//   console.log(players.length);
-// }, 1000)
+  setInterval(() =>{
+    socket.broadcast.emit('updatePosition', players)
+  }, 45)
 
+});
+
+app.use('/resources', express.static('resources'));
 app.use(express.static('public'));
+
 app.get('/', function (req, res) {
   res.sendFile(__dirname + "/index.html");
 })
 
-app.listen(8000, () => {
+httpServer.listen(8000, () => {
   console.log('Listen at port 8000');
-  console.log('Websockt at port 1337');
 })
+
+// ========== //
+
+const movePlayer = ({ id, move }) => {
+  if (move === 'up') { players[id].y -= 3 }
+  if (move === 'down') { players[id].y += 3 }
+  if (move === 'left') { players[id].x -= 3 }
+  if (move === 'right') { players[id].x += 3 }
+}

@@ -19,7 +19,6 @@ export class Game {
     eventListen() {
         addEventListener("keydown", (e) => {
             if (this.controller[e.key]) {
-                console.log(e.key)
                 this.controller[e.key].pressed = true;
             };
         })
